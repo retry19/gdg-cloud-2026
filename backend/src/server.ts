@@ -3,7 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import dotenv from 'dotenv';
 const pdfParse = require('pdf-parse');
-import { analyzeCVAgainstJD } from './services/analyzer';
+import { analyzeCVAgainstJD, autofixCV } from './services/analyzer';
 
 dotenv.config();
 
@@ -12,7 +12,7 @@ const port = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Configure multer for file uploads (CVs)
 const upload = multer({ storage: multer.memoryStorage() });
@@ -50,6 +50,25 @@ app.post('/api/analyze', upload.single('cv'), async (req, res) => {
   } catch (error) {
     console.error('Error during analysis:', error);
     res.status(500).json({ error: 'Failed to analyze job market fit.' });
+  }
+});
+
+// Auto-fix CV based on analysis feedback
+app.post('/api/autofix', async (req, res) => {
+  try {
+    const { cvText, jdText, analysis } = req.body;
+
+    if (!cvText || !jdText || !analysis) {
+       res.status(400).json({ error: 'CV text, job description, and analysis are required.' });
+       return;
+    }
+
+    const result = await autofixCV(jdText, cvText, analysis);
+    res.json(result);
+
+  } catch (error) {
+    console.error('Error during autofix:', error);
+    res.status(500).json({ error: 'Failed to auto-fix CV.' });
   }
 });
 

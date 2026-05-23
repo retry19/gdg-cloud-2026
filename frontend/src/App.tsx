@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { UploadCloud, FileText, Activity, Briefcase } from 'lucide-react';
+import { UploadCloud, FileText, Activity, Briefcase, Wand2, Copy, Check } from 'lucide-react';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-// Define the shape of our API response
 interface FitResult {
   overallFitScore: number;
   skillsFit: number;
@@ -13,12 +12,26 @@ interface FitResult {
   recommendations: string[];
 }
 
+interface ImprovedSection {
+  sectionTitle: string;
+  original: string;
+  improved: string;
+}
+
+interface AutofixResult {
+  improvedSections: ImprovedSection[];
+  summary: string;
+}
+
 function App() {
   const [cvFile, setCvFile] = useState<File | null>(null);
   const [jdText, setJdText] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<FitResult | null>(null);
   const [error, setError] = useState('');
+  const [autofixResult, setAutofixResult] = useState<AutofixResult | null>(null);
+  const [autofixLoading, setAutofixLoading] = useState(false);
+  const [autofixError, setAutofixError] = useState('');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -56,6 +69,32 @@ function App() {
       setError('An error occurred during analysis. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAutoFix = async () => {
+    if (!cvFile || !result) return;
+    setAutofixError('');
+    setAutofixLoading(true);
+    setAutofixResult(null);
+
+    try {
+      const cvText = await cvFile.text();
+      const response = await fetch('/api/autofix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cvText, jdText, analysis: result }),
+      });
+
+      if (!response.ok) throw new Error('Auto-fix failed.');
+
+      const data = await response.json();
+      setAutofixResult(data);
+    } catch (err) {
+      console.error(err);
+      setAutofixError('An error occurred during auto-fix. Please try again.');
+    } finally {
+      setAutofixLoading(false);
     }
   };
 
@@ -157,7 +196,13 @@ function App() {
               <div className="h-48 bg-slate-200 rounded-2xl"></div>
             </div>
           ) : result ? (
-            <AnalyticsDashboard result={result} />
+            <AnalyticsDashboard
+              result={result}
+              onAutoFix={handleAutoFix}
+              autofixLoading={autofixLoading}
+              autofixResult={autofixResult}
+              autofixError={autofixError}
+            />
           ) : null}
         </section>
       </main>
@@ -165,7 +210,13 @@ function App() {
   );
 }
 
-function AnalyticsDashboard({ result }: { result: FitResult }) {
+function AnalyticsDashboard({ result, onAutoFix, autofixLoading, autofixResult, autofixError }: {
+  result: FitResult;
+  onAutoFix: () => void;
+  autofixLoading: boolean;
+  autofixResult: AutofixResult | null;
+  autofixError: string;
+}) {
   const getScoreColor = (score: number) => {
     if (score >= 76) return 'text-brand-green';
     if (score >= 51) return 'text-brand-yellow';
@@ -217,6 +268,43 @@ function AnalyticsDashboard({ result }: { result: FitResult }) {
         </div>
       </div>
 
+      {/* Auto-Fix Button */}
+      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-slate-800 flex items-center">
+              <Wand2 size={18} className="mr-2 text-emerald-500" /> Auto-Fix CV
+            </h3>
+            <p className="text-sm text-slate-500 mt-1">AI rewrites your CV sections based on the feedback below.</p>
+          </div>
+          <button
+            onClick={onAutoFix}
+            disabled={autofixLoading}
+            className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 transition-all active:scale-95 disabled:opacity-70 flex items-center shrink-0"
+          >
+            {autofixLoading ? (
+              <>
+                <Activity className="animate-spin mr-2" size={18} />
+                Fixing...
+              </>
+            ) : (
+              <>
+                <Wand2 className="mr-2" size={18} />
+                Auto-Fix CV
+              </>
+            )}
+          </button>
+        </div>
+        {autofixError && (
+          <div className="mt-4 bg-red-50 text-red-600 p-4 rounded-xl text-sm font-medium border border-red-100">
+            {autofixError}
+          </div>
+        )}
+      </div>
+
+      {/* Auto-Fix Results */}
+      {autofixResult && <AutoFixResult data={autofixResult} />}
+
       {/* Gaps List */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
         <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-3">Key Gaps Identified</h3>
@@ -257,6 +345,66 @@ function AnalyticsDashboard({ result }: { result: FitResult }) {
         </ul>
       </div>
 
+    </div>
+  );
+}
+
+function AutoFixResult({ data }: { data: AutofixResult }) {
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+
+  const handleCopy = (text: string, idx: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 2000);
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Summary */}
+      <div className="bg-emerald-50 p-6 rounded-3xl shadow-sm border border-emerald-100 relative overflow-hidden">
+        <div className="absolute -right-10 -top-10 w-32 h-32 bg-emerald-200/50 rounded-full blur-3xl pointer-events-none"></div>
+        <h3 className="text-lg font-bold text-emerald-900 mb-2 flex items-center relative z-10">
+          <Wand2 size={18} className="mr-2" /> Changes Summary
+        </h3>
+        <p className="text-sm text-emerald-800 leading-relaxed font-medium relative z-10">{data.summary}</p>
+      </div>
+
+      {/* Before/After Sections */}
+      {data.improvedSections.map((section, i) => (
+        <div key={i} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+          <h4 className="text-base font-bold text-slate-800 mb-4 pb-3 border-b border-slate-100">{section.sectionTitle}</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Original */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-red-500">Original</span>
+              </div>
+              <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                {section.original}
+              </div>
+            </div>
+            {/* Improved */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">Improved</span>
+                <button
+                  onClick={() => handleCopy(section.improved, i)}
+                  className="flex items-center text-xs font-medium text-slate-500 hover:text-emerald-600 transition-colors"
+                >
+                  {copiedIdx === i ? (
+                    <><Check size={14} className="mr-1" /> Copied</>
+                  ) : (
+                    <><Copy size={14} className="mr-1" /> Copy</>
+                  )}
+                </button>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                {section.improved}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
