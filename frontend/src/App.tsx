@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UploadCloud, FileText, Activity, Briefcase, Wand2, Copy, Check } from 'lucide-react';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { Analytics } from '@vercel/analytics/react';
 
 interface FitResult {
   overallFitScore: number;
@@ -100,6 +101,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
+      <Analytics />
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
